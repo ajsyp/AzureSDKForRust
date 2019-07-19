@@ -1,15 +1,3 @@
-use http::status::StatusCode;
-
-#[derive(Debug, Clone, Fail)]
-#[fail(
-    display = "invalid status code received. Expected: {}, received: {}",
-    expected, received
-)]
-pub struct UnexpectedStatusCodeError {
-    pub expected: StatusCode,
-    pub received: StatusCode,
-}
-
 #[derive(Debug, Fail)]
 pub enum ServerReceiveError {
     #[fail(display = "unexpected redirect url: {}", url)]
