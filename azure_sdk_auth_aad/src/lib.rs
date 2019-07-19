@@ -2,8 +2,11 @@
 extern crate failure;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate log;
 use azure_sdk_core::errors::AzureError;
 use futures::future::{done, ok, Future};
+use log::debug;
 use oauth2::basic::BasicClient;
 use oauth2::curl::http_client;
 use oauth2::{
