@@ -22,8 +22,6 @@ url="*"
 rand="*"
 failure="*"
 futures="*"
-tokio-core="*"
-tokio-reactor="*"
 hyper="*"
 hyper-rustls="*"
 http="*"
@@ -31,9 +29,10 @@ serde="*"
 serde_derive="*"
 chrono="*"
 serde_json ="*"
+log="*"
 
 [dev-dependencies]
-tokio-core   = "0.1"
+tokio-core   = "*"
 
 [features]
 test_e2e       = []

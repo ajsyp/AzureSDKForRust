@@ -18,17 +18,7 @@ fn main() {
         hyper::Client::builder().build(hyper_rustls::HttpsConnector::new(4));
     let client = Arc::new(client);
 
-    let non_interactive = authorize_non_interactive(
-        client.clone(),
-        &client_id,
-        &client_secret,
-        "https://management.azure.com/",
-        &tenant_id,
-    );
-
-    let lr = core.run(non_interactive).unwrap();
-    println!("Non interactive authorization == {:?}", lr);
-
+    // Create URL to browse for initial authorization
     let c = authorize_delegate(
         client_id,
         client_secret,
@@ -40,14 +30,22 @@ fn main() {
     println!("c == {:?}", c);
     println!("\nbrowse this url:\n{}", c.authorize_url);
 
+    // Start a naive server to receive the redirect
+    // with the token
     let code = naive_server(&c, 3003).unwrap();
 
     println!("code received: {:?}", code);
 
+    // Exchange the token with one that can be
+    // used for authorization
     let token = exchange(c, code).unwrap();
 
     println!("token received: {:?}", token);
 
+    // Let's enumerate the Azure SQL Databases instances
+    // in the subscription. Note: this way of calling the REST API
+    // will be different (and easier) using other Azure Rust SDK
+    // crates, this is just an example.
     let request = Request::builder()
         .method("GET")
         .header("Authorization", format!("Bearer {}", token.access_token().secret()))

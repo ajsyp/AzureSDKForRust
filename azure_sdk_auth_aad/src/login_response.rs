@@ -1,5 +1,6 @@
 use chrono::{DateTime, TimeZone, Utc};
 use failure::Error;
+use oauth2::AccessToken;
 
 #[derive(Debug, Clone, Deserialize)]
 struct _LoginResponse {
@@ -20,7 +21,7 @@ pub struct LoginResponse {
     pub expires_on: DateTime<Utc>,
     pub not_before: DateTime<Utc>,
     pub resource: String,
-    pub access_token: String,
+    pub access_token: AccessToken,
 }
 
 impl LoginResponse {
@@ -40,11 +41,11 @@ impl LoginResponse {
             expires_on,
             not_before,
             resource: r.resource,
-            access_token: r.access_token,
+            access_token: AccessToken::new(r.access_token),
         })
     }
 
-    pub fn bearer(&self) -> &str {
+    pub fn access_token(&self) -> &AccessToken {
         &self.access_token
     }
 }
