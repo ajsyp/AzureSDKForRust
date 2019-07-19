@@ -2,21 +2,24 @@
 extern crate failure;
 #[macro_use]
 extern crate serde_derive;
+use azure_sdk_core::errors::AzureError;
+use futures::future::{done, ok, Future};
 use oauth2::basic::BasicClient;
 use oauth2::curl::http_client;
 use oauth2::{
-    AuthType, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, TokenUrl,
+    AuthType, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, TokenUrl,
 };
-use std::io::{BufRead, BufReader, Write};
-use std::net::TcpListener;
+use url::form_urlencoded;
 use url::Url;
-mod client_helpers;
-pub use client_helpers::*;
 mod login_response;
+use azure_sdk_core::perform_http_request;
+use http::status::StatusCode;
+use hyper::{Body, Client, Request};
 pub use login_response::*;
+use std::sync::Arc;
 pub mod errors;
-use errors::ServerReceiveError;
+mod naive_server;
+pub use naive_server::naive_server;
 
 #[derive(Debug)]
 pub struct AuthObj {
@@ -26,26 +29,13 @@ pub struct AuthObj {
     pub pkce_code_verifier: PkceCodeVerifier,
 }
 
-pub fn authorize_delegate(
-    client_id: ClientId,
-    client_secret: ClientSecret,
-    tenant_id: &str,
-    redirect_url: Url,
-    resource: &str,
-) -> AuthObj {
+pub fn authorize_delegate(client_id: ClientId, client_secret: ClientSecret, tenant_id: &str, redirect_url: Url, resource: &str) -> AuthObj {
     let auth_url = AuthUrl::new(
-        Url::parse(&format!(
-            "https://login.microsoftonline.com/{}/oauth2/authorize",
-            tenant_id
-        ))
-        .expect("Invalid authorization endpoint URL"),
+        Url::parse(&format!("https://login.microsoftonline.com/{}/oauth2/authorize", tenant_id))
+            .expect("Invalid authorization endpoint URL"),
     );
     let token_url = TokenUrl::new(
-        Url::parse(&format!(
-            "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
-            tenant_id
-        ))
-        .expect("Invalid token endpoint URL"),
+        Url::parse(&format!("https://login.microsoftonline.com/{}/oauth2/v2.0/token", tenant_id)).expect("Invalid token endpoint URL"),
     );
 
     // Set up the config for the Microsoft Graph OAuth2 process.
@@ -74,89 +64,12 @@ pub fn authorize_delegate(
     }
 }
 
-pub fn naive_server(
-    auth_obj: &AuthObj,
-    port: u32,
-) -> Result<AuthorizationCode, ServerReceiveError> {
-    // A very naive implementation of the redirect server.
-    // A ripoff of https://github.com/ramosbugs/oauth2-rs/blob/master/examples/msgraph.rs, stripped
-    // down for simplicity.
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-    for stream in listener.incoming() {
-        if let Ok(mut stream) = stream {
-            {
-                let mut reader = BufReader::new(&stream);
-
-                let mut request_line = String::new();
-                reader.read_line(&mut request_line).unwrap();
-
-                let redirect_url = match request_line.split_whitespace().nth(1) {
-                    Some(redirect_url) => redirect_url,
-                    None => {
-                        return Err(ServerReceiveError::UnexpectedRedirectUrl { url: request_line })
-                    }
-                };
-                let url = Url::parse(&("http://localhost".to_string() + redirect_url)).unwrap();
-
-                println!("url == {}", url);
-
-                let code = match url.query_pairs().find(|pair| {
-                    let &(ref key, _) = pair;
-                    key == "code"
-                }) {
-                    Some(qp) => AuthorizationCode::new(qp.1.into_owned()),
-                    None => {
-                        return Err(ServerReceiveError::QueryPairNotFound {
-                            query_pair: "code".to_owned(),
-                        })
-                    }
-                };
-
-                let state = match url.query_pairs().find(|pair| {
-                    let &(ref key, _) = pair;
-                    key == "state"
-                }) {
-                    Some(qp) => CsrfToken::new(qp.1.into_owned()),
-                    None => {
-                        return Err(ServerReceiveError::QueryPairNotFound {
-                            query_pair: "state".to_owned(),
-                        })
-                    }
-                };
-
-                if state.secret() != auth_obj.csrf_state.secret() {
-                    return Err(ServerReceiveError::StateSecretMismatch {
-                        expected_state_secret: auth_obj.csrf_state.secret().to_owned(),
-                        received_state_secret: state.secret().to_owned(),
-                    });
-                }
-
-                let message = "Authentication complete. You can close this window now.";
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{}",
-                    message.len(),
-                    message
-                );
-                stream.write_all(response.as_bytes()).unwrap();
-
-                // The server will terminate itself after collecting the first code.
-                return Ok(code);
-            }
-        }
-    }
-
-    unreachable!()
-}
-
 pub fn exchange(
     auth_obj: AuthObj,
     code: AuthorizationCode,
 ) -> Result<
     oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType>,
-    oauth2::RequestTokenError<
-        oauth2::curl::Error,
-        oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>,
-    >,
+    oauth2::RequestTokenError<oauth2::curl::Error, oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>>,
 > {
     // Exchange the code with a token.
     let token = auth_obj
@@ -168,4 +81,39 @@ pub fn exchange(
 
     println!("MS Graph returned the following token:\n{:?}\n", token);
     token
+}
+
+pub fn authorize_non_interactive(
+    client: Arc<Client<hyper_rustls::HttpsConnector<hyper::client::HttpConnector>>>,
+    //  grant_type: &str, fixed on "client_credentials",
+    client_id: &oauth2::ClientId,
+    client_secret: &oauth2::ClientSecret,
+    resource: &str,
+    tenant_id: &str,
+) -> impl Future<Item = LoginResponse, Error = AzureError> {
+    let encoded: String = form_urlencoded::Serializer::new(String::new())
+        .append_pair("grant_type", "client_credentials")
+        .append_pair("client_id", client_id.as_str())
+        .append_pair("client_secret", client_secret.secret())
+        .append_pair("resource", resource)
+        .finish();
+
+    let uri = format!("https://login.microsoftonline.com/{}/oauth2/token", tenant_id);
+
+    done(
+        Request::builder()
+            .method("POST")
+            .header("ContentType", "Application / WwwFormUrlEncoded")
+            .uri(uri)
+            .body(Body::from(encoded)),
+    )
+    .from_err()
+    .and_then(move |request| {
+        perform_http_request(&client, request, StatusCode::OK).and_then(|resp| {
+            done(LoginResponse::from_str(&resp)).from_err().and_then(|r| {
+                println!("{:?}", r);
+                ok(r)
+            })
+        })
+    })
 }
