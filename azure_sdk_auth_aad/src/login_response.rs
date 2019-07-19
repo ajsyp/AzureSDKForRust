@@ -1,3 +1,4 @@
+use azure_sdk_core::errors::AzureError;
 use chrono::{DateTime, TimeZone, Utc};
 use failure::Error;
 use oauth2::AccessToken;
@@ -25,7 +26,7 @@ pub struct LoginResponse {
 }
 
 impl LoginResponse {
-    pub fn from_str(s: &str) -> Result<LoginResponse, Error> {
+    pub fn from_str(s: &str) -> Result<LoginResponse, AzureError> {
         let r: _LoginResponse = serde_json::from_str(s)?;
 
         let expires_on: i64 = r.expires_on.parse()?;
