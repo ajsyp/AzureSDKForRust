@@ -1,4 +1,5 @@
 use azure_sdk_auth_aad::*;
+use azure_sdk_core::perform_http_request;
 use futures::future::{ok, Future};
 use hyper::{Body, Client, Request};
 use oauth2::{ClientId, ClientSecret};

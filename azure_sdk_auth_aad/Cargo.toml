@@ -1,6 +1,6 @@
 [package]
 name          = "azure_sdk_auth_aad"
-version       = "0.20.1"
+version       = "0.20.2"
 description   = "Rust wrappers around Microsoft Azure REST APIs - Azure OAuth2 helper crate"
 readme        = "README.md"
 authors       = ["Francesco Cogno <francesco.cogno@outlook.com>"]
@@ -15,7 +15,7 @@ categories    = ["api-bindings"]
 edition       = "2018"
 
 [dependencies]
-azure_sdk_core = { path="../azure_sdk_core", version = "0.20.1" }
+azure_sdk_core = { path="../azure_sdk_core", version = "0.20.2" }
 oauth2= { git="https://github.com/ramosbugs/oauth2-rs.git" }
 base64="*"
 url="*"
