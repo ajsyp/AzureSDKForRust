@@ -1,6 +1,5 @@
 use azure_sdk_core::errors::AzureError;
 use chrono::{DateTime, TimeZone, Utc};
-use failure::Error;
 use oauth2::AccessToken;
 
 #[derive(Debug, Clone, Deserialize)]

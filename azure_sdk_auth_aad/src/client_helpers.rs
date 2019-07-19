@@ -1,10 +1,8 @@
-use crate::errors::UnexpectedStatusCodeError;
 use crate::LoginResponse;
 use azure_sdk_core::errors::{check_status_extract_body_2, AzureError};
-use failure::Error;
-use futures::future::{done, err, ok, Either};
+use futures::future::{done, ok};
 use http::status::StatusCode;
-use hyper::rt::{Future, Stream};
+use hyper::rt::Future;
 use hyper::{Body, Client, Request};
 use std::sync::Arc;
 use url::form_urlencoded;
