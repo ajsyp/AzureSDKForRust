@@ -1,0 +1,39 @@
+[package]
+name          = "azure_sdk_auth_aad"
+version       = "0.20.1"
+description   = "Rust wrappers around Microsoft Azure REST APIs - Azure OAuth2 helper crate"
+readme        = "README.md"
+authors       = ["Francesco Cogno <francesco.cogno@outlook.com>"]
+license       = "Apache-2.0"
+repository    = "https://github.com/MindFlavor/AzureSDKForRust"
+documentation = "http://mindflavor.github.io/AzureSDKForRust/azure_sdk_for_rust/index.html"
+homepage      = "https://github.com/MindFlavor/AzureSDKForRust"
+
+keywords      = ["sdk", "azure", "rest", "iot", "cloud"]
+categories    = ["api-bindings"]
+
+edition       = "2018"
+
+[dependencies]
+azure_sdk_core = { path="../azure_sdk_core", version = "0.20.1" }
+oauth2= { git="https://github.com/ramosbugs/oauth2-rs.git" }
+base64="*"
+url="*"
+rand="*"
+failure="*"
+futures="*"
+tokio-core="*"
+tokio-reactor="*"
+hyper="*"
+hyper-rustls="*"
+http="*"
+serde="*"
+serde_derive="*"
+chrono="*"
+serde_json ="*"
+
+[dev-dependencies]
+tokio-core   = "0.1"
+
+[features]
+test_e2e       = []
