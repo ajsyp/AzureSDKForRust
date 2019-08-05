@@ -53,8 +53,7 @@ fn add_if_exists<K: header::AsHeaderName>(h: &HeaderMap, key: K) -> &str {
     }
 }
 
-#[allow(unknown_lints)]
-#[clippy::needless_pass_by_value]
+#[allow(unknown_lints, clippy::needless_pass_by_value)]
 fn string_to_sign(h: &HeaderMap, u: &url::Url, method: &Method, service_type: ServiceType) -> String {
     match service_type {
         ServiceType::Table => {
@@ -232,8 +231,7 @@ fn lexy_sort(vec: &url::form_urlencoded::Parse, query_param: &str) -> Vec<(Strin
     v_values
 }
 
-#[allow(unknown_lints)]
-#[clippy::too_many_arguments]
+#[allow(unknown_lints, clippy::too_many_arguments)]
 pub fn perform_request<F>(
     client: &hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>>,
     uri: &str,
