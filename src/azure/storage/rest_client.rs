@@ -23,8 +23,8 @@ const AZURE_VERSION: &str = "2017-11-09";
 pub const HEADER_VERSION: &str = "x-ms-version"; //=> [String] }
 pub const HEADER_DATE: &str = "x-ms-date"; //=> [String] }
 
-fn generate_authorization(h: &HeaderMap, u: &url::Url, method: &Method, hmac_key: &str, service_type: ServiceType) -> String {
-    let str_to_sign = string_to_sign(h, u, method, service_type);
+fn generate_authorization(h: &HeaderMap, u: &url::Url, method: &Method, azure_account: &str, hmac_key: &str, service_type: ServiceType) -> String {
+    let str_to_sign = string_to_sign(azure_account, h, u, method, service_type);
 
     // debug!("\nstr_to_sign == {:?}\n", str_to_sign);
     // debug!("str_to_sign == {}", str_to_sign);
@@ -32,7 +32,7 @@ fn generate_authorization(h: &HeaderMap, u: &url::Url, method: &Method, hmac_key
     let auth = encode_str_to_sign(&str_to_sign, hmac_key);
     // debug!("auth == {:?}", auth);
 
-    format!("SharedKey {}:{}", get_account(u), auth)
+    format!("SharedKey {}:{}", azure_account, auth)
 }
 
 fn encode_str_to_sign(str_to_sign: &str, hmac_key: &str) -> String {
@@ -54,7 +54,7 @@ fn add_if_exists<K: header::AsHeaderName>(h: &HeaderMap, key: K) -> &str {
 }
 
 #[allow(unknown_lints, clippy::needless_pass_by_value)]
-fn string_to_sign(h: &HeaderMap, u: &url::Url, method: &Method, service_type: ServiceType) -> String {
+fn string_to_sign(azure_account: &str, h: &HeaderMap, u: &url::Url, method: &Method, service_type: ServiceType) -> String {
     match service_type {
         ServiceType::Table => {
             let mut s = String::new();
@@ -65,7 +65,7 @@ fn string_to_sign(h: &HeaderMap, u: &url::Url, method: &Method, service_type: Se
                 add_if_exists(h, headers::CONTENT_MD5),
                 add_if_exists(h, header::CONTENT_TYPE),
                 add_if_exists(h, HEADER_DATE),
-                canonicalized_resource_table(u)
+                canonicalized_resource_table(azure_account, u)
             )
             .unwrap();
             s
@@ -94,7 +94,7 @@ fn string_to_sign(h: &HeaderMap, u: &url::Url, method: &Method, service_type: Se
                 add_if_exists(h, header::IF_UNMODIFIED_SINCE),
                 add_if_exists(h, header::RANGE),
                 canonicalize_header(h),
-                canonicalized_resource(u)
+                canonicalized_resource(azure_account, u)
             )
             .unwrap();
             s
@@ -139,33 +139,16 @@ fn canonicalize_header(h: &HeaderMap) -> String {
     can
 }
 
-#[inline]
-fn get_account(u: &url::Url) -> &str {
-    match u.host().unwrap().clone() {
-        url::Host::Domain(dm) => {
-            // debug!("dom == {:?}", dm);
-
-            let first_dot = dm.find('.').unwrap();
-            &dm[0..first_dot]
-        }
-        url::Host::Ipv4(_) => {
-            // this must be the emulator
-            "devstoreaccount1"
-        }
-        _ => panic!("only Domains are supported in canonicalized_resource"),
-    }
-}
-
 // For table
-fn canonicalized_resource_table(u: &url::Url) -> String {
-    format!("/{}{}", get_account(u), u.path())
+fn canonicalized_resource_table(azure_account: &str, u: &url::Url) -> String {
+    format!("/{}{}", azure_account, u.path())
 }
 
-fn canonicalized_resource(u: &url::Url) -> String {
+fn canonicalized_resource(azure_account: &str, u: &url::Url) -> String {
     let mut can_res: String = String::new();
     can_res += "/";
 
-    let account = get_account(u);
+    let account = azure_account;
     can_res += &account;
 
     let paths = u.path_segments().unwrap();
@@ -236,6 +219,7 @@ pub fn perform_request<F>(
     client: &hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>>,
     uri: &str,
     http_method: &Method,
+    azure_account: &str,
     azure_key: &str,
     headers_func: F,
     request_body: Option<&[u8]>,
@@ -275,7 +259,7 @@ where
     // We sign the request only if it is not already signed (with the signature of an
     // SAS token for example)
     if url.query_pairs().find(|p| p.0 == "sig").is_none() {
-        let auth = generate_authorization(request.headers(), &url, http_method, azure_key, service_type);
+        let auth = generate_authorization(request.headers(), &url, http_method, azure_account, azure_key, service_type);
         request.headers_mut().insert(header::AUTHORIZATION, format_header_value(auth)?);
     }
 
@@ -326,7 +310,7 @@ mod test {
         headers.insert(HEADER_DATE, format_header_value(time).unwrap());
         headers.insert(HEADER_VERSION, header::HeaderValue::from_static(AZURE_VERSION));
 
-        let s = string_to_sign(&headers, &u, &method, service_type);
+        let s = string_to_sign("mindrust", &headers, &u, &method, service_type);
 
         assert_eq!(
             s,
@@ -341,7 +325,7 @@ Wed, 03 May 2017 14:04:56 GMT
     #[test]
     fn test_canonicalize_resource_10() {
         let url = url::Url::parse("https://mindrust.table.core.windows.net/TABLES").unwrap();
-        assert_eq!(super::canonicalized_resource(&url), "/mindrust/TABLES");
+        assert_eq!(super::canonicalized_resource("mindrust", &url), "/mindrust/TABLES");
     }
 
     #[test]
@@ -352,7 +336,7 @@ Wed, 03 May 2017 14:04:56 GMT
         )
         .unwrap();
         assert_eq!(
-            super::canonicalized_resource(&url),
+            super::canonicalized_resource("myaccount", &url),
             "/myaccount/mycontainer\ncomp:metadata\nrestype:container"
         );
     }
@@ -366,7 +350,7 @@ Wed, 03 May 2017 14:04:56 GMT
         )
         .unwrap();
         assert_eq!(
-            super::canonicalized_resource(&url),
+            super::canonicalized_resource("myaccount", &url),
             "/myaccount/mycontainer\ncomp:list\ninclude:metadata,snapshots,\
              uncommittedblobs\nrestype:container"
         );
@@ -379,7 +363,7 @@ Wed, 03 May 2017 14:04:56 GMT
              net/mycontainer/myblob",
         )
         .unwrap();
-        assert_eq!(super::canonicalized_resource(&url), "/myaccount-secondary/mycontainer/myblob");
+        assert_eq!(super::canonicalized_resource("myaccount-secondary", &url), "/myaccount-secondary/mycontainer/myblob");
     }
 
     #[test]

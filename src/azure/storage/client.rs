@@ -211,6 +211,22 @@ impl Client {
         })
     }
 
+    pub fn custom(account: &str, key: &str, blob_storage_url: &Url, table_storage_url: &Url) -> Result<Client, AzureError> {
+        let client = hyper::Client::builder().build(hyper_tls::HttpsConnector::new(4)?);
+
+        let blob_uri = format!("{}{}", blob_storage_url.as_str(), account);
+        let table_uri = format!("{}{}", table_storage_url.as_str(), account);
+
+        Ok(Client {
+            account: account.to_owned(),
+            key: key.to_owned(),
+            sas_token: None,
+            hc: client,
+            blob_uri,
+            table_uri,
+        })
+    }
+
     pub fn emulator(blob_storage_url: &Url, table_storage_url: &Url) -> Result<Client, AzureError> {
         let client = hyper::Client::builder().build(hyper_tls::HttpsConnector::new(4)?);
 
@@ -266,7 +282,7 @@ impl Client {
     {
         let uri = self.add_sas_token_to_uri(uri);
 
-        perform_request(&self.hc, &uri, method, &self.key, headers_func, request_body, ServiceType::Blob)
+        perform_request(&self.hc, &uri, method, &self.account, &self.key, headers_func, request_body, ServiceType::Blob)
     }
 
     pub(crate) fn perform_table_request<F>(
@@ -289,6 +305,7 @@ impl Client {
             &self.hc,
             &uri,
             method,
+            &self.account,
             &self.key,
             headers_func,
             request_str,
