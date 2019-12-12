@@ -206,12 +206,16 @@ impl Blob {
     ) -> Result<Blob, AzureError> {
         trace!("\n{:?}", h);
 
-        let creation_time = h
+        let creation_time = match h
             .get(CREATION_TIME)
-            .ok_or_else(|| AzureError::HeaderNotFound(CREATION_TIME.to_owned()))?
-            .to_str()?;
-        let creation_time = DateTime::parse_from_rfc2822(creation_time)?;
-        let creation_time = DateTime::from_utc(creation_time.naive_utc(), Utc);
+            .or_else(|| h.get(header::LAST_MODIFIED))
+            .and_then(|x| x.to_str().ok()) {
+            Some(creation_time) => {
+                let creation_time = DateTime::parse_from_rfc2822(creation_time)?;
+                DateTime::from_utc(creation_time.naive_utc(), Utc)
+            }
+            None => Utc::now(),
+        };
         trace!("creation_time == {:?}", creation_time);
 
         let content_type = h
